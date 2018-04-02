@@ -21,14 +21,12 @@ typedef struct client_data{
 
 typedef struct client_list{
 	int id;
-	int fd_server;
-	int fd_client;
+	int fd_self;
 	int fd_user;
 	char name[NAME_SIZE];
 	char pass[NAME_SIZE];
 	char other_name[NAME_SIZE];
 	struct sockaddr_in client;
-	struct client_data *c_data;
 	struct client_list *next;
 }CLI_DETAIL;
 

@@ -13,7 +13,7 @@ void signal_handler(int sig){
 int main()
 {
 	int socket_bind;
-	int len;
+	int len, flag = 1;
 	int  fd_dest = -1;
 	struct sockaddr_in server, client;
 	pthread_t recvt;
@@ -27,8 +27,10 @@ int main()
 		if( fd_server == -1 )
 		{
 			printf("Error in socket creation");
+			flag = 0;
 			break;
 		}
+		printf("Socket created successfully.\n");
 
 		server.sin_family = AF_INET;
 		server.sin_addr.s_addr = INADDR_ANY;
@@ -38,31 +40,34 @@ int main()
 		if(socket_bind == -1)
 		{
 			perror("Error in binding");
+			flag = 0;
 			break;
 		}
+		printf("bind() success.\n");
 #if 0
 		int yes = 1;
 		if (setsockopt(socket_bind, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int)) < 0)
 			perror("setsockopt(SO_REUSEADDR) failed");
 #endif			
-		printf("Bind Done\n");
 		socket_bind = listen( fd_server, 10);
-		printf("Listen Done\n");
 		if(socket_bind == -1)
 		{
 			perror("Error in listening");
+			flag = 0;
 			break;
 		}
+		printf("listen() success.\n");
 
 		len = sizeof(client);
-		while(1){
+		while(flag){
 			memset( &client, 0, sizeof(server));
 			fd_dest = -1;
 			printf("Ready to accept new connection\n");
 			fd_dest = accept( fd_server, (struct sockaddr*)&client, &len);
 			if(fd_dest == -1)
 			{
-				printf("Error in temporary socket creation");
+				perror("Error in socket creation for client");
+				flag = 0;
 				break;
 			}
 			tmp = (CLI_DETAIL *)malloc(sizeof(CLI_DETAIL));
@@ -72,13 +77,13 @@ int main()
 			list_head = tmp;
 
 			memcpy( &tmp->client, &client, sizeof(client));
-			tmp->fd_client = fd_dest;
-			tmp->fd_server = fd_server;
-			//printf("fd_dest: %d  tmp->fd_client:%d  tmp:%p\n", fd_dest, tmp->fd_client, tmp);
+			tmp->fd_self = fd_dest;
 			pthread_create( &recvt, NULL, ConnectReq, tmp);
+			//To Do : thread wait till request complete
+			printf("Success to connect %s with server.\n", tmp->name);
 		}
 
-	}while(0);
+	}while(flag);
 
 	if(fd_server > 0 ){
 		close(fd_server);

@@ -6,39 +6,57 @@ void *RecvThread(void *data){
 	MSG_DATA *c_data;
 	void *buff = malloc(sizeof(MSG_DATA));
 
+	if(buff == NULL){
+		printf("Error to allocating memory %s %d\n", __func__, __LINE__);
+		return ;
+	}
+	printf("Reciving messages from [%s]\n",tdata->name);
 	while(1){
-		if((recv(tdata->fd_client, buff, sizeof(MSG_DATA), 0)) > 0){
+		if((recv(tdata->fd_self, buff, sizeof(MSG_DATA), 0)) > 0){
 			printf("Recived Msg from :%s\n", tdata->name );
 			c_data = (MSG_DATA*)buff;
 			printf("%s\n", c_data->data);
+			if(c_data->flag == 3){ //close chat
+				printf("Close request recived from: %s with %s\n", tdata->name, tdata->other_name);
+				break;			
+			}
+
 
 			if(( send( tdata->fd_user, c_data->data, strlen(c_data->data),0)) > 0){
-				printf("Message being sent to %s\n",  tdata->other_name);
+				printf("Message being sent from [%s] to [%s]\n", tdata->name, tdata->other_name);
 			}
 			else {
 				perror("Failure Sending Message");
+				printf("Send fail from [%s] to [%s]\n", tdata->name, tdata->other_name);
 				printf("file: %s line: %d\n", __FILE__, __LINE__);
 				break;
 			}
 		}
 		else{
-			perror("Error to sending message");
+			perror("Error while receiving  message");
+			printf("Recive fail from [%s]\n", tdata->name);
 			printf("file: %s line: %d\n", __FILE__, __LINE__);
 			break;
 		}
 	}
+
+	if(buff != NULL)
+		free(buff);
 }
 
 void *ChatThread(void *detail){
 	CLI_DETAIL *tdata = (CLI_DETAIL *)detail;
 	MSG_DATA *c_data;
 	void *buff = malloc(sizeof(MSG_DATA));
+	if(buff == NULL){
+		printf("Error to allocating memory %s %d\n", __func__, __LINE__);
+		return ;
+	}
 	int len;
 	pthread_attr_t tattr;
 	pthread_t tid;
 
-
-	printf("Ready to Chat\n");
+	printf("[%s] ready to chat with [%s]\n", tdata->name, tdata->other_name);
 
 	//pthread_attr_init()(&tattr);
 	//pthread_attr_setdetachstate()( &tattr, PTHREAD_CREATE_DETACHED);
@@ -51,24 +69,33 @@ void *ChatThread(void *detail){
 			c_data = (MSG_DATA*)buff;
 			printf("%s\n", c_data->data);
 
-			if(( send( tdata->fd_client, c_data->data, strlen(c_data->data),0)) > 0){
-				printf("Message being sent to %s\n",  tdata->name);
+			if(c_data->flag == 3){ //close chat
+				printf("Close request recived from: %s with %s\n", tdata->other_name, tdata->name);
+				break;			
+			}
+
+			if(( send( tdata->fd_self, c_data->data, strlen(c_data->data),0)) > 0){
+				printf("Message being sent from [%s] to [%s]\n", tdata->other_name, tdata->name);
 			}
 			else {
 				perror("Failure Sending Message");
+				printf("Send fail from [%s] to [%s]\n", tdata->other_name, tdata->name);
 				printf("file: %s line: %d\n", __FILE__, __LINE__);
 				break;
 			}
 		}
 		else{
-			perror("Error to sending message");
+			perror("Error while receiving  message");
+			printf("Recive fail from [%s]\n", tdata->other_name);
 			printf("file: %s line: %d\n", __FILE__, __LINE__);
 			break;
 		}
-		}
-
-
+	}
+	if(buff != NULL)
+		free(buff);
 }
+
+
 void *ConnectReq(void *req_cli)
 {
 
@@ -79,24 +106,29 @@ void *ConnectReq(void *req_cli)
 	pthread_t rec;
 	pthread_attr_t tattr;
 	void *buff = malloc(sizeof(MSG_DATA));
+	if(buff == NULL){
+		printf("Error to allocating memory %s %d\n", __func__, __LINE__);
+		return ;
+	}
 	int len;
 	int i;
+
+	printf("New connection request arrived at %s.\n", __func__);
 	while(1){
 		printf("Proccessing on request\n");
-		//printf("req_detail->fd_client:%d\n", req_detail->fd_client);
-		if((len = recv(req_detail->fd_client, buff, sizeof(MSG_DATA), 0)) > 0) {
+		if((len = recv(req_detail->fd_self, buff, sizeof(MSG_DATA), 0)) > 0) {
 			printf("Packet received for registration Size :%d\n", len );
 			c_data = (MSG_DATA*)buff;
 			printf("Registration data: %s flag: %d\n", c_data->data, c_data->flag);
 		}
 		else{
-			perror("Error");
+			perror("Error in recv()");
 			printf("file: %s line: %d\n", __FILE__, __LINE__);
 			break;
 		}
 		if(c_data->flag == 0){
 			token = strtok(c_data->data, "#");
-			printf("Name	:%s\n", token);
+			printf("Name:%s\n", token);
 			strcpy(req_detail->name, token);
 			token = strtok(NULL, "\0");
 			printf("Password:%s\n", token);
@@ -111,7 +143,7 @@ void *ConnectReq(void *req_cli)
 				sprintf(name, "%d:%s#", i, tmp->name);
 				strcat(str, name);
 				strcpy(list_on[i].name, name);
-				list_on[i].open_fd = tmp->fd_client;
+				list_on[i].open_fd = tmp->fd_self;
 				list_on[i].o_val = i;
 				tmp = tmp->next;
 				i++;
@@ -121,17 +153,18 @@ void *ConnectReq(void *req_cli)
 			strcpy(c_data->data, str);
 			c_data->flag = 1;
 			printf("Copied to data buffer, ready to send..\n");
-			if ((send(req_detail->fd_client, (void *)c_data,  sizeof(MSG_DATA), 0)) == -1){
-				perror("Failure Sending Message\n");
+			if ((send(req_detail->fd_self, (void *)c_data,  sizeof(MSG_DATA), 0)) == -1){
+				perror("Failure to send user list");
+				printf("Failure to send user list to %s\n",req_detail->name);
 				printf("file: %s line: %d\n", __FILE__, __LINE__);
-				exit(1);
+				break;
 			}
 			else {
 				printf("Message being sent: %s\n", str);
 			}
 
 			printf("Waiting for client response\n");
-			if((len = recv(req_detail->fd_client, buff, sizeof(MSG_DATA), 0)) > 0) {
+			if((len = recv(req_detail->fd_self, buff, sizeof(MSG_DATA), 0)) > 0) {
 				printf("Recived Success size: %d\n", len);
 				c_data=(MSG_DATA*)buff;
 				printf("Data: %s flag: %d\n", c_data->data, c_data->flag);
@@ -153,15 +186,19 @@ void *ConnectReq(void *req_cli)
 			pthread_create( &rec, NULL, ChatThread, req_detail);
 			break;
 		}
-		printf("Done\n");
+		printf("Successfully added client to server.\n");
+			//To Do: send reponse to thread
 	}
+	if(buff != NULL)
+		free(buff);
+	
 }
 
 void closeAll(CLI_DETAIL *list){
 	printf("CloseAll Request Recived\n");
 	while(list != NULL){
-		if(list->fd_client){
-			close(list->fd_client);
+		if(list->fd_self){
+			close(list->fd_self);
 			printf("%s clossed successfully..\n", list->name);
 		}
 		list = list->next;
